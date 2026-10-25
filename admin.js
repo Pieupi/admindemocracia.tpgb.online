@@ -77,10 +77,18 @@ $("aq").innerHTML=`<div class="item"><label class="fl" style="margin-top:0" for=
 <label class="fl" for="lt2">Até</label><div class="f"><input id="lt2" type="date" value="${esc(ST.live_to||"")}"></div>
 <label class="fl" for="lu">Arquivo de resultado do TSE (Presidente)</label><div class="f"><input id="lu" type="url" value="${esc(ST.live_url||"")}" placeholder="https://resultados.tse.jus.br/.../br-c0001-e......-u.json"></div>
 <label class="fl" for="ll">Título da página</label><div class="f"><input id="ll" value="${esc(ST.live_label||"")}" placeholder="Segundo turno · Presidente"></div>
+<div class="lab" style="margin-top:34px">Comemoração do site</div>
+<p class="sm">Deixa o site todo vermelho, com faixa no topo e confete. Fica desligada até você ligar.</p>
+<label class="fl" for="cm">Comemoração</label><div class="f"><select id="cm"><option value="off">Desligada</option><option value="on">Ligada agora</option><option value="auto">Automática (pelas datas)</option></select></div>
+<label class="fl" for="cs">Visual</label><div class="f"><select id="cs"><option value="forte">Todo vermelho (fundo vermelho, texto branco)</option><option value="suave">Preto com detalhes vermelhos</option></select></div>
+<label class="fl" for="cf2">Ligar a partir de</label><div class="f"><input id="cf2" type="date" value="${esc(ST.celeb_from||"")}"></div>
+<label class="fl" for="ct3">Desligar depois de</label><div class="f"><input id="ct3" type="date" value="${esc(ST.celeb_to||"")}"></div>
+<label class="fl" for="cti">Título da faixa</label><div class="f"><input id="cti" maxlength="60" value="${esc(ST.celeb_title||"")}" placeholder="Viva a democracia!"></div>
+<label class="fl" for="ctx">Texto da faixa</label><div class="f"><input id="ctx" maxlength="120" value="${esc(ST.celeb_text||"")}" placeholder="O Brasil foi às urnas."></div>
 <button class="btn" id="lb" type="button" style="margin-top:22px">Salvar</button><p class="sm" id="lmsg" style="margin-top:12px" aria-live="polite"></p></div>`;
-$("lm").value=ST.live_mode||"auto";$("aq").querySelectorAll(".f select").forEach(mkSel);
+$("lm").value=ST.live_mode||"auto";$("cm").value=ST.celeb_mode||"off";$("cs").value=ST.celeb_style||"forte";$("aq").querySelectorAll(".f select").forEach(mkSel);
 $("lb").onclick=async()=>{const u=$("lu").value.trim();if(u&&!/^https:\/\/([a-z0-9-]+\.)*tse\.jus\.br\//.test(u)){$("lmsg").textContent="O endereço precisa ser de um site do TSE (tse.jus.br).";return}
-const rows=[["live_mode",$("lm").value],["live_from",$("lf").value],["live_to",$("lt2").value],["live_url",u],["live_label",$("ll").value.trim()]].map(([key,value])=>({key,value}));
+const rows=[["live_mode",$("lm").value],["live_from",$("lf").value],["live_to",$("lt2").value],["live_url",u],["live_label",$("ll").value.trim()],["celeb_mode",$("cm").value],["celeb_style",$("cs").value],["celeb_from",$("cf2").value],["celeb_to",$("ct3").value],["celeb_title",$("cti").value.trim()],["celeb_text",$("ctx").value.trim()]].map(([key,value])=>({key,value}));
 const{error}=await SB.from("site_settings").upsert(rows);$("lmsg").textContent=error?"Erro: "+error.message:"Salvo.";loadSettings()}}
 async function renderMsgs(){$("aq").onclick=null;const{data,error}=await SB.from("contact_messages").select("*").order("created_at",{ascending:false}).limit(100);
 if(error){$("aq").innerHTML='<div class="item"><p>Erro: '+esc(error.message)+'</p></div>';return}
