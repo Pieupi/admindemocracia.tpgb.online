@@ -31,7 +31,7 @@
     if (!/^https:\/\//.test(u)) u = location.origin.replace("//admin.", "//");
     return u.replace(/\/+$/, "");
   };
-  const vurl = code => base() + "/#/verificar/" + code;
+  const vurl = code => base() + "/verificar/?c=" + code;
   const errMsg = e => {
     const c = String((e && e.code) || ""), m = String((e && e.message) || "");
     if (/PGRST20[25]|42P01|42883/.test(c) || /schema cache|does not exist/i.test(m))
