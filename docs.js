@@ -241,6 +241,7 @@
       cols: "Nome, Assinatura", rows: "", num: true, style: "pad", color: "#3a4590" }
   ];
   const allM = () => BUILTIN.concat(mine().map(m => ({ ...m, mine: true })));
+  const modelOpts = () => '<option value="">Em branco</option>' + allM().map((m, i) => `<option value="${i}">${m.mine ? "★ " : ""}${esc(m.n)}</option>`).join("");
 
   /* ---------- tela do painel ---------- */
   async function loadList() {
@@ -263,7 +264,7 @@
     const TO = Object.entries(TY).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
     aq.innerHTML = `<div class="item"><div class="lab" style="margin-bottom:6px">Novo documento</div>
 <p class="sm">Cada documento recebe código único, QR Code e impressão digital (SHA-256). Depois de emitido, o texto não pode ser editado: para corrigir, emita outro.</p>
-<label class="fl" for="dmo">Modelo</label><div class="f"><select id="dmo"></select></div>
+<label class="fl" for="dmo">Modelo</label><div class="f"><select id="dmo">${modelOpts()}</select></div>
 <div class="acts"><button type="button" id="dms">Salvar como modelo</button><button type="button" id="dmx" hidden>Excluir modelo</button></div>
 <p class="sm" style="margin-top:8px">Os modelos que você salva ficam neste navegador.</p>
 <label class="fl" for="dmd">Formato</label><div class="f"><select id="dmd"><option value="doc">Documento de texto</option><option value="lst">Lista (tabela)</option></select></div>
@@ -307,11 +308,10 @@ ${owner ? `<div class="item"><label class="fl" style="margin-top:0" for="dsu">En
       num: $("dln").checked, style: $("dvs").value, color: $("dcr").value });
     const fillModels = pick => {
       const sel = $("dmo");
-      sel.innerHTML = '<option value="">Em branco</option>' + allM().map((m, i) => `<option value="${i}">${m.mine ? "★ " : ""}${esc(m.n)}</option>`).join("");
+      sel.innerHTML = modelOpts();
       setSel("dmo", pick == null ? "" : String(pick));
       $("dmx").hidden = !(pick != null && allM()[pick] && allM()[pick].mine);
     };
-    fillModels();
     $("dmd").onchange = sync; $("dvs").onchange = sync;
     $("dmo").onchange = () => {
       const v = $("dmo").value, m = v === "" ? {} : allM()[+v];
