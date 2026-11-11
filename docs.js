@@ -30,10 +30,10 @@
      Linhas "@num" (numerar linhas) e "@banner #RRGGBB" (faixa colorida) são opções de layout. */
   const kind = d => /^\|/m.test(d.body || "") ? "Lista" : (TY[d.doc_type] || "Documento");
   const parseBody = body => {
-    const o = { num: false, banner: null }, lines = [];
+    const o = { num: false, banner: null, print: "" }, lines = [];
     for (const raw of String(body).split("\n")) {
-      const m = raw.trim().match(/^@(num|banner)\b\s*(#[0-9a-fA-F]{6})?$/);
-      if (m) { if (m[1] === "num") o.num = true; else o.banner = m[2] || "#3A4590"; continue; }
+      const m = raw.trim().match(/^@(num|banner|print)\b\s*(#[0-9a-fA-F]{6}|limpo|cartao|moldura)?$/);
+      if (m) { if (m[1] === "num") o.num = true; else if (m[1] === "print") o.print = /^[a-z]/.test(m[2] || "") ? m[2] : "cartao"; else o.banner = /^#/.test(m[2] || "") ? m[2] : "#3A4590"; continue; }
       lines.push(raw);
     }
     return { o, lines };
@@ -59,17 +59,20 @@
     if (!window.jspdf || !window.qrcode) throw new Error("As bibliotecas de PDF não carregaram. Recarregue a página e tente de novo.");
     if ((await sha(canon(d))) !== d.content_hash) throw new Error("A impressão digital não confere com o registro. PDF não gerado.");
     const { jsPDF } = window.jspdf, doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
-    const X = 20, W = 170, FOOT = 282, LH = 5.6, INK = [17, 17, 17], GRAY = [110, 110, 110], url = vurl(d.code);
+    let FOOT = 282; const X = 20, W = 170, LH = 5.6, INK = [17, 17, 17], GRAY = [110, 110, 110], url = vurl(d.code);
     const { o: OP, lines: BL } = parseBody(S(d.body));
+    /* layouts de impressão: cartao (faixa recuada), limpo (sem faixa), moldura (quadro fino); vazio = cor até a borda */
+    const PS = OP.print, PR = !!PS, TOP = PS === "moldura" ? 16 : PR ? 12 : 0, PX = PS === "limpo" ? 0 : PR ? 4 : 0;
+    if (PR) FOOT = PS === "moldura" ? 270 : PS === "limpo" ? 274 : 272;
     const BAN = OP.banner ? rgb(OP.banner) : null;
     const BTX = BAN && (0.299 * BAN[0] + 0.587 * BAN[1] + 0.114 * BAN[2]) > 160 ? [0, 0, 0] : [255, 255, 255];
     let ttl = [];
     if (BAN) { doc.setFont("helvetica", "bold"); doc.setFontSize(15); ttl = doc.splitTextToSize(S(d.title.toUpperCase()), W); }
-    const H1 = BAN ? Math.max(24, 12 + ttl.length * 7) : 24;
-    let y = BAN ? H1 + 12 : 36;
+    const H1 = BAN ? Math.max(24, 12 + ttl.length * 7) : (PS === "limpo" ? 16 : 24);
+    let y = H1 + 12 + TOP;
     const col = c => doc.setTextColor(c[0], c[1], c[2]);
     const cs = n => { if (doc.setCharSpace) doc.setCharSpace(n); };
-    const need = h => { if (y + h > FOOT - 4) { doc.addPage(); y = 28; } };
+    const need = h => { if (y + h > FOOT - 4) { doc.addPage(); y = 28 + TOP; } };
     const lab = (t, x, yy, sz, c, f) => { doc.setFont(f || "courier", "bold"); doc.setFontSize(sz); col(c); cs(0.5); doc.text(S(t), x, yy); cs(0); };
     const para = (t, x, w, sz, font, c, lh) => {
       doc.setFont("helvetica", font); doc.setFontSize(sz); col(c);
@@ -124,7 +127,7 @@
       const put = (cl, head) => {
         doc.setFont("helvetica", head ? "bold" : "normal"); doc.setFontSize(FS);
         const L = cl.map((t, i) => doc.splitTextToSize(t, ws[i] - PD * 2)), h = Math.max(...L.map(a => a.length || 1)) * TL + PD * 1.8;
-        if (y + h > FOOT - 4) { doc.addPage(); y = 22; if (!head) put(hd, true); }
+        if (y + h > FOOT - 4) { doc.addPage(); y = 22 + TOP; if (!head) put(hd, true); }
         doc.setFont("helvetica", head ? "bold" : "normal"); doc.setFontSize(FS); col(INK);
         doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.2);
         if (head) { doc.setFillColor(238, 238, 238); doc.rect(X, y, W, h, "FD"); } else doc.rect(X, y, W, h);
@@ -195,22 +198,39 @@
     const n = doc.getNumberOfPages();
     for (let i = 1; i <= n; i++) {
       doc.setPage(i);
-      const first = i === 1, h = first ? H1 : 12, s = first ? 9 : 6, sy = (h - s) / 2, ly = h / 2 + (first ? 1.2 : 0.9);
-      doc.setFillColor(...(BAN || [0, 0, 0])); doc.rect(0, 0, 210, h, "F");
-      if (BAN && first) {
-        doc.setFont("helvetica", "bold"); doc.setFontSize(15); col(BTX);
-        const t0 = (h - ttl.length * 7) / 2 + 5.3;
-        ttl.forEach((ln, k) => doc.text(ln, 105, t0 + k * 7, { align: "center" }));
+      const first = i === 1, LM = PS === "limpo", h = first ? H1 : (LM ? 10 : 12), s = first ? 9 : 6, sy = TOP + (h - s) / 2, ly = TOP + h / 2 + (first ? 1.2 : 0.9);
+      if (PS === "moldura") { doc.setDrawColor(...(BAN || [0, 0, 0])); doc.setLineWidth(0.6); doc.rect(8, 8, 194, 281); }
+      const logo = (txtc, codec) => {
+        doc.setFillColor(...LIME); doc.rect(X + PX, sy, s, s, "F");
+        doc.setFont("helvetica", "bold"); doc.setFontSize(first ? 11 : 8); col([0, 0, 0]);
+        doc.text("A", X + PX + s / 2, sy + s / 2 + (first ? 1.5 : 1.1), { align: "center" });
+        doc.setFont("helvetica", "bold"); cs(first ? 0.9 : 0.7); doc.setFontSize(first ? 8.5 : 6.5); col(txtc);
+        doc.text("ARQUIVO DA RESPONSABILIDADE", X + PX + s + 4, ly); cs(0);
+        doc.setFont("courier", "bold"); doc.setFontSize(first ? 8 : 6.5); col(codec);
+        doc.text(S(first ? kind(d).toUpperCase() : d.code), X + W - PX, ly, { align: "right" });
+      };
+      if (LM) {
+        /* limpo: sem faixa, fundo branco; só um traço de cor embaixo do cabeçalho */
+        doc.setFillColor(...(BAN || LIME)); doc.rect(X, TOP + h, W, 1.2, "F");
+        if (BAN && first) {
+          doc.setFont("helvetica", "bold"); doc.setFontSize(15); col(BAN);
+          ttl.forEach((ln, k) => doc.text(ln, X, TOP + (h - ttl.length * 7) / 2 + 5.3 + k * 7));
+        } else logo(INK, GRAY);
       } else {
-        if (!BAN) {
-          doc.setFillColor(...LIME); doc.rect(0, h, 210, 0.9, "F"); doc.rect(X, sy, s, s, "F");
-          doc.setFont("helvetica", "bold"); doc.setFontSize(first ? 11 : 8); col([0, 0, 0]);
-          doc.text("A", X + s / 2, sy + s / 2 + (first ? 1.5 : 1.1), { align: "center" });
+        doc.setFillColor(...(BAN || [0, 0, 0]));
+        if (PS === "cartao") doc.roundedRect(X, TOP, W, h, 2.5, 2.5, "F"); else if (PR) doc.rect(X, TOP, W, h, "F"); else doc.rect(0, 0, 210, h, "F");
+        if (BAN && first) {
+          doc.setFont("helvetica", "bold"); doc.setFontSize(15); col(BTX);
+          const t0 = TOP + (h - ttl.length * 7) / 2 + 5.3;
+          ttl.forEach((ln, k) => doc.text(ln, 105, t0 + k * 7, { align: "center" }));
+        } else if (BAN) {
+          doc.setFont("helvetica", "bold"); cs(0.7); doc.setFontSize(6.5); col(BTX);
+          doc.text("ARQUIVO DA RESPONSABILIDADE", X + PX, ly); cs(0);
+          doc.setFont("courier", "bold"); doc.text(S(d.code), X + W - PX, ly, { align: "right" });
+        } else {
+          if (PS !== "cartao") { doc.setFillColor(...LIME); if (PR) doc.rect(X, TOP + h, W, 0.9, "F"); else doc.rect(0, h, 210, 0.9, "F"); }
+          logo([255, 255, 255], first ? LIME : [150, 150, 150]);
         }
-        doc.setFont("helvetica", "bold"); cs(first ? 0.9 : 0.7); doc.setFontSize(first ? 8.5 : 6.5); col(BAN ? BTX : [255, 255, 255]);
-        doc.text("ARQUIVO DA RESPONSABILIDADE", BAN ? X : X + s + 4, ly); cs(0);
-        doc.setFont("courier", "bold"); doc.setFontSize(first ? 8 : 6.5); col(BAN ? BTX : first ? LIME : [150, 150, 150]);
-        doc.text(S(first ? kind(d).toUpperCase() : d.code), X + W, ly, { align: "right" });
       }
       doc.setDrawColor(210, 210, 210); doc.setLineWidth(0.2); doc.line(X, FOOT, X + W, FOOT);
       doc.setFont("courier", "normal"); doc.setFontSize(6.8); col(GRAY);
@@ -228,7 +248,7 @@
   const MK = "arq_modelos_v1";
   const mine = () => { try { const a = JSON.parse(localStorage.getItem(MK) || "[]"); return Array.isArray(a) ? a : []; } catch (_) { return []; } };
   const keep = a => { try { localStorage.setItem(MK, JSON.stringify(a)); return true; } catch (_) { return false; } };
-  const BUILTIN = [
+  const BASE = [
     { n: "Ofício", mode: "doc", type: "oficio", title: "Ofício nº [número]/[ano] - [assunto]", recipient: "[Nome e cargo de quem recebe]",
       body: "Prezado(a) [nome],\n\nDirijo-me a Vossa Senhoria para [objetivo do ofício].\n\n## Contexto\n[Descreva o fato ou a situação em poucas linhas.]\n\n## Solicitação\n- [Item 1]\n- [Item 2]\n\nColoco-me à disposição para esclarecimentos e aguardo retorno até [data].\n\nAtenciosamente," },
     { n: "Declaração", mode: "doc", type: "declaracao", title: "Declaração de [finalidade]",
@@ -240,6 +260,8 @@
     { n: "Lista de presença", mode: "lst", type: "relatorio", title: "Lista de presença - [evento]", sub: "Data: [dd/mm/aaaa]",
       cols: "Nome, Assinatura", rows: "", num: true, style: "pad", color: "#3a4590" }
   ];
+  const VAR = [["cartao", "cartão"], ["limpo", "limpo"], ["moldura", "moldura"]];
+  const BUILTIN = BASE.flatMap(m => [m].concat(VAR.map(([k, nm]) => ({ ...m, n: m.n + " (" + nm + ")", print: k }))));
   const allM = () => BUILTIN.concat(mine().map(m => ({ ...m, mine: true })));
   const modelOpts = () => '<option value="">Em branco</option>' + allM().map((m, i) => `<option value="${i}">${m.mine ? "★ " : ""}${esc(m.n)}</option>`).join("");
 
@@ -281,6 +303,8 @@
 <div id="dcw" hidden><label class="fl" for="dcr">Cor do banner</label><input id="dcr" type="color" value="#3a4590" style="display:block;margin-top:8px;width:64px;height:40px;background:none;border:1px solid #555;padding:2px"></div></div>
 <label class="fl" for="dsg">Assinado por</label><div class="f"><input id="dsg" maxlength="120" placeholder="Nome de quem assina"></div>
 <label class="fl" for="drl">Cargo ou função (opcional)</label><div class="f"><input id="drl" maxlength="120" placeholder="Ex.: Coordenação editorial"></div>
+<label class="fl" for="dpr">Layout de impressão</label><div class="f"><select id="dpr"><option value="">Normal: cor até a borda da folha</option><option value="cartao">Cartão: faixa recuada com cantos arredondados</option><option value="limpo">Limpo: sem faixa, só um traço de cor</option><option value="moldura">Moldura: quadro fino contornando a página</option></select></div>
+<p class="sm" style="margin-top:8px">Cartão, Limpo e Moldura disfarçam a borda branca que a impressora deixa.</p>
 <label class="chk"><input type="checkbox" id="dpb">Mostrar o texto completo na página pública de verificação</label>
 <button class="btn" id="dgo" type="button">Emitir e baixar PDF</button>
 <p class="sm" id="dm" style="margin-top:12px" aria-live="polite"></p>
@@ -299,13 +323,13 @@ ${owner ? `<div class="item"><label class="fl" style="margin-top:0" for="dsu">En
       setSel("dmd", m.mode || "doc"); setSel("dty", m.type || "oficio");
       $("dti").value = m.title || ""; $("dre").value = m.recipient || ""; $("dbo").value = m.body || "";
       $("dsg").value = m.signer || ""; $("drl").value = m.role || "";
-      $("dls").value = m.sub || ""; $("dlc").value = m.cols || ""; $("dlr").value = m.rows || ""; $("dln").checked = !!m.num;
+      setSel("dpr", typeof m.print === "string" ? m.print : (m.print ? "cartao" : "")); $("dls").value = m.sub || ""; $("dlc").value = m.cols || ""; $("dlr").value = m.rows || ""; $("dln").checked = !!m.num;
       setSel("dvs", m.style === "ban" ? "ban" : "pad"); $("dcr").value = m.color || "#3a4590";
       sync();
     };
     const cur = () => ({ mode: $("dmd").value, type: $("dty").value, title: $("dti").value.trim(), recipient: $("dre").value.trim(), body: $("dbo").value,
       signer: $("dsg").value.trim(), role: $("drl").value.trim(), sub: $("dls").value.trim(), cols: $("dlc").value.trim(), rows: $("dlr").value,
-      num: $("dln").checked, style: $("dvs").value, color: $("dcr").value });
+      num: $("dln").checked, print: $("dpr").value, style: $("dvs").value, color: $("dcr").value });
     const fillModels = pick => {
       const sel = $("dmo");
       sel.innerHTML = modelOpts();
@@ -346,10 +370,11 @@ ${owner ? `<div class="item"><label class="fl" style="margin-top:0" for="dsu">En
         if (!cols.length) { m.textContent = "Informe as colunas da lista, separadas por vírgula."; return; }
         if (!rows.length) { m.textContent = "Escreva pelo menos uma linha da lista."; return; }
         const sub = g("dls").replace(/[\n\r]/g, " ");
-        bo = [$("dln").checked ? "@num" : "", $("dvs").value === "ban" ? "@banner " + $("dcr").value.toUpperCase() : "",
+        bo = [$("dln").checked ? "@num" : "", $("dpr").value ? "@print " + $("dpr").value : "", $("dvs").value === "ban" ? "@banner " + $("dcr").value.toUpperCase() : "",
           sub ? "## " + sub : "", "|" + cols.join("|")].concat(rows.map(r => "|" + r.join("|"))).filter(Boolean).join("\n");
         if (bo.length > 20000) { m.textContent = "A lista passou do limite de 20 mil caracteres. Divida em duas listas."; return; }
       } else if (bo.length < 20) { m.textContent = "Escreva o texto do documento (mínimo de 20 caracteres)."; return; }
+      else if ($("dpr").value) bo = "@print " + $("dpr").value + "\n" + bo;
       if (sg.length < 3) { m.textContent = "Informe quem assina o documento."; return; }
       $("dgo").disabled = true; m.textContent = "Emitindo…";
       const { data, error } = await SB.rpc("issue_document", {
